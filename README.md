@@ -49,6 +49,19 @@ npx prisma db seed   # loads sample nail salon services
 npm run dev
 ```
 
+## Deploy (Vercel)
+
+1. Import this repo at [vercel.com/new](https://vercel.com/new).
+2. In Project Settings → Environment Variables, set everything from `.env` (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, `GOOGLE_CALENDAR_ID`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `CRON_SECRET`).
+3. **Database**: `src/lib/db.ts` currently points Prisma at a hardcoded local file (`dev.db` in the project root) via `better-sqlite3`. Vercel's serverless functions have a read-only filesystem (`/tmp` is writable but not shared or persisted across invocations), so **deploying as-is means every booking write disappears on the next request** — this needs to move to a hosted database before going live:
+   - Swap the datasource in `prisma/schema.prisma` from `sqlite` to `postgresql` (e.g. a free Prisma Postgres via `npx create-db`, or Neon/Supabase),
+   - Update `src/lib/db.ts` to use `@prisma/adapter-pg` (or the standard `PrismaClient` with `DATABASE_URL`) instead of `PrismaBetterSqlite3`,
+   - Set `DATABASE_URL` in Vercel's env vars,
+   - Run `npx prisma migrate deploy` and `npx prisma db seed` against the new database.
+4. Build command is the default `next build` (already in `package.json`) — no extra config needed.
+5. The reminder cron (`vercel.json` → `/api/cron/reminders`, daily at 15:00 UTC) is picked up automatically by Vercel Cron on deploy; make sure `CRON_SECRET` matches between `.env` and the Vercel project.
+6. Push to `main` to trigger a deploy.
+
 ## Notes / current scope
 
 - Guest-facing flow only — no merchant dashboard yet (add/edit services by editing `prisma/seed.ts` or directly in the DB for now).
