@@ -5,7 +5,7 @@ Guest-facing booking flow: browse services → pick a real open time slot (check
 ## Stack
 
 - Next.js (App Router) + TypeScript + Tailwind
-- Prisma + SQLite (`dev.db`)
+- Prisma + PostgreSQL (driver adapter via `@prisma/adapter-pg`)
 - Google Calendar API (availability + event creation)
 - Resend (confirmation + reminder emails)
 - Vercel Cron (daily reminder job)
@@ -41,23 +41,24 @@ Guest-facing booking flow: browse services → pick a real open time slot (check
 
 Set `CRON_SECRET` in `.env` to any random string. When deployed to Vercel, Vercel Cron automatically sends this as a bearer token — set the same value in your Vercel project's environment variables.
 
+### 4. Database
+
+`DATABASE_URL` needs a real Postgres connection string. Easiest way to get one: `npx create-db` (free hosted Prisma Postgres, prints a `DATABASE_URL` and a claim URL — visit the claim URL to make it permanent, otherwise it expires in 24h).
+
 ## Local development
 
 ```bash
 npm install
-npx prisma db seed   # loads sample nail salon services
+npx prisma migrate dev   # applies migrations to DATABASE_URL
+npx prisma db seed       # loads sample nail salon services
 npm run dev
 ```
 
 ## Deploy (Vercel)
 
 1. Import this repo at [vercel.com/new](https://vercel.com/new).
-2. In Project Settings → Environment Variables, set everything from `.env` (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, `GOOGLE_CALENDAR_ID`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `CRON_SECRET`).
-3. **Database**: `src/lib/db.ts` currently points Prisma at a hardcoded local file (`dev.db` in the project root) via `better-sqlite3`. Vercel's serverless functions have a read-only filesystem (`/tmp` is writable but not shared or persisted across invocations), so **deploying as-is means every booking write disappears on the next request** — this needs to move to a hosted database before going live:
-   - Swap the datasource in `prisma/schema.prisma` from `sqlite` to `postgresql` (e.g. a free Prisma Postgres via `npx create-db`, or Neon/Supabase),
-   - Update `src/lib/db.ts` to use `@prisma/adapter-pg` (or the standard `PrismaClient` with `DATABASE_URL`) instead of `PrismaBetterSqlite3`,
-   - Set `DATABASE_URL` in Vercel's env vars,
-   - Run `npx prisma migrate deploy` and `npx prisma db seed` against the new database.
+2. In Project Settings → Environment Variables, set everything from `.env` (`DATABASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, `GOOGLE_CALENDAR_ID`, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `CRON_SECRET`) — point `DATABASE_URL` at a permanent database (claim the `create-db` one, or use a proper Neon/Supabase project) rather than a 24h temporary one.
+3. Run `npx prisma migrate deploy` against the production `DATABASE_URL` to create the tables before first use.
 4. Build command is the default `next build` (already in `package.json`) — no extra config needed.
 5. The reminder cron (`vercel.json` → `/api/cron/reminders`, daily at 15:00 UTC) is picked up automatically by Vercel Cron on deploy; make sure `CRON_SECRET` matches between `.env` and the Vercel project.
 6. Push to `main` to trigger a deploy.
